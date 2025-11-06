@@ -79,6 +79,10 @@ function niceTicks(min, max, target = 8) {
 
 export default function App() {
   const [expr, setExpr] = useState("sin(x) + x^2/5");
+  const exprInputRef = useRef(null);
+  const [lockTangent, setLockTangent] = useState(false);
+  const [tangentX, setTangentX] = useState("0");
+  const [step, setStep] = useState(0.1);
   const [xMin, setXMin] = useState(-10);
   const [xMax, setXMax] = useState(10);
   const [samples, setSamples] = useState(800);
@@ -88,8 +92,42 @@ export default function App() {
   const [hoverX, setHoverX] = useState(null);
   const canvasRef = useRef(null);
 
+const [pw, setPw] = useState([
+  { cond: "x<0", expr: "-x" },
+  { cond: "", expr: "x^2" },
+]);
+
+function buildPiecewise(rows) {
+  const parts = rows.filter(r => r.expr.trim() !== "");
+  if (parts.length === 0) return;
+  let s = "";
+  for (let i=0;i<parts.length;i++) {
+    const {cond,expr} = parts[i];
+    if (i < parts.length-1 && cond.trim()) {
+      s += `(${cond})?(${expr}):`;
+    } else {
+      s += `(${expr})`;
+    }
+  }
+  setExpr(s);
+}
+
   const f = useMemo(() => compileExpression(expr), [expr]);
   const df = useMemo(() => compileDerivative(expr), [expr]);
+
+  function insertSnippet(before, after = "", cursorDelta = 0) {
+  const el = exprInputRef.current;
+  const start = el?.selectionStart ?? expr.length;
+  const end = el?.selectionEnd ?? expr.length;
+  const sel = expr.slice(start, end);
+  const next = expr.slice(0, start) + before + sel + after + expr.slice(end);
+  setExpr(next);
+  requestAnimationFrame(() => {
+    const pos = start + before.length + (sel ? sel.length : 0) + cursorDelta;
+    if (el) el.setSelectionRange(pos, pos);
+  });
+}
+function insertCall(name) { insertSnippet(`${name}(`, `)`); }
 
   const [yRange, setYRange] = useState([-5, 5]);
   useEffect(() => {
@@ -272,8 +310,14 @@ export default function App() {
         <section style={box}>
           <label style={{ fontSize: 14, fontWeight: 600 }}>f(x)</label>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginTop:6 }}>
-            <input value={expr} onChange={(e)=>setExpr(e.target.value)} placeholder="ör. sin(x) + x^2/5"
-              style={{ flex:1, minWidth:260, padding:"10px 12px", borderRadius:12, border:"1px solid #cbd5e1", outline:"none" }} />
+            <input
+  ref={exprInputRef}
+  value={expr}
+  onChange={(e)=>setExpr(e.target.value)}
+  placeholder="ör. sin(x) + x^2/5"
+  style={{ flex:1, minWidth:260, padding:"10px 12px", borderRadius:12, border:"1px solid #cbd5e1", outline:"none" }}
+/>
+
             <label style={{ fontSize:14 }}>
               <input type="checkbox" checked={showDerivative} onChange={(e)=>setShowDerivative(e.target.checked)} /> türev grafiği
             </label>
@@ -281,6 +325,20 @@ export default function App() {
               <input type="checkbox" checked={showTangent} onChange={(e)=>setShowTangent(e.target.checked)} /> teğet
             </label>
           </div>
+<div style={{display:"flex", gap:8, flexWrap:"wrap", marginTop:8}}>
+  <button onClick={()=>insertSnippet("x")}      className="btn">x</button>
+  <button onClick={()=>insertSnippet("^")}      className="btn">^</button>
+  <button onClick={()=>insertSnippet("^2", "", 0)} className="btn">^2</button>
+  <button onClick={()=>insertCall("abs")}       className="btn">abs( )</button>
+  <button onClick={()=>insertSnippet("sqrt(",")")} className="btn">√( )</button>
+  <button onClick={()=>insertCall("sin")}       className="btn">sin( )</button>
+  <button onClick={()=>insertCall("cos")}       className="btn">cos( )</button>
+  <button onClick={()=>insertCall("tan")}       className="btn">tan( )</button>
+  <button onClick={()=>insertCall("exp")}       className="btn">e^( )</button>
+  <button onClick={()=>insertCall("log")}       className="btn">ln( )</button>
+  <button onClick={()=>insertSnippet("pi")}     className="btn">π</button>
+  <button onClick={()=>insertSnippet("(",")")}  className="btn">( )</button>
+</div>
 
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:8, marginTop:10 }}>
             <div style={{ ...box, padding:8 }}>
@@ -303,11 +361,43 @@ export default function App() {
           <div style={{ marginTop:10, borderRadius:12, overflow:"hidden", border:"1px solid #e5e7eb", background:"#fff" }}>
             <canvas ref={canvasRef} style={{ width:"100%", height:520, display:"block" }} />
           </div>
+<div style={{marginTop:10, padding:8, border:"1px dashed #cbd5e1", borderRadius:10}}>
+  <div style={{fontSize:12, opacity:0.7, marginBottom:6}}>Parçalı fonksiyon</div>
+  {pw.map((r, idx)=>(
+    <div key={idx} style={{display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:8, marginBottom:6}}>
+      <input
+        placeholder={idx===pw.length-1 ? "else (boş bırak)" : "koşul (ör. x<0)"}
+        value={r.cond}
+        onChange={e=>{
+          const cp=[...pw]; cp[idx]={...cp[idx], cond:e.target.value}; setPw(cp);
+        }}
+        style={{padding:"6px 8px", border:"1px solid #cbd5e1", borderRadius:8}}
+      />
+      <input
+        placeholder="ifade (ör. -x)"
+        value={r.expr}
+        onChange={e=>{
+          const cp=[...pw]; cp[idx]={...cp[idx], expr:e.target.value}; setPw(cp);
+        }}
+        style={{padding:"6px 8px", border:"1px solid #cbd5e1", borderRadius:8}}
+      />
+      <button onClick={()=>{
+        const cp=[...pw]; cp.splice(idx,1); setPw(cp.length?cp:[{cond:"",expr:""}]);
+      }} className="btn">sil</button>
+    </div>
+  ))}
+  <div style={{display:"flex", gap:8}}>
+    <button onClick={()=>setPw([...pw,{cond:"",expr:""}])} className="btn">+ satır</button>
+    <button onClick={()=>buildPiecewise(pw)} className="btn">f(x)’e ekle</button>
+  </div>
+</div>
 
           <div style={{ fontSize:12, opacity:0.8, marginTop:8 }}>
             İpuçları: sin, cos, tan, exp, log (doğal log), abs, ^ üstel. Örnek: <code>abs(x)</code>, <code>sin(x)+x^2/5</code>, <code>x&lt;0?-x:x^2</code>.
             <br/>Not: Sembolik türev mümkün değilse sayısal merkez farkı kullanılır; köşe/kesiklikte teğet gizlenir.
           </div>
+          
+
         </section>
       </div>
     </div>

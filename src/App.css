@@ -4,6 +4,16 @@
   padding: 2rem;
   text-align: center;
 }
+.btn {
+  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.btn:hover {
+  background: #f3f4f6;
+}
 
 .logo {
   height: 6em;
