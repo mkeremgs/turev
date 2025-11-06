@@ -277,27 +277,39 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
     drawAxes(xMin, xMax, dRange[0], dRange[1], panelH + 12);
     if (df && showDerivative) drawCurve(df, "#10b981", xMin, xMax, dRange[0], dRange[1], panelH + 12);
     // Tanımsız noktaları işaretle
-if (f && df && showDerivative) {
+// Tanımsız noktaları işaretle (köşe / kesiklik)
+if (f && showDerivative) {
   const xs = linspace(xMin, xMax, Math.min(samples, 400));
   ctx.save();
   ctx.translate(0, panelH + 12);
-  for (let i = 1; i < xs.length - 1; i++) {
-    const x = xs[i];
-    const h = 1e-4 * Math.max(1, Math.abs(x));
-    const left = (f(x) - f(x - h)) / h;
-    const right = (f(x + h) - f(x)) / h;
-    const diff = Math.abs(left - right);
-    
-    // Eğer fark çok büyükse türev tanımsız demektir
-const L = Math.abs(left), R = Math.abs(right);
-const absDiff = Math.abs(left - right);
-const rel = absDiff / Math.max(1e-9, Math.max(L, R));
-const ABS_TOL = 0.3;
-const REL_TOL = 0.3;
-if (absDiff > ABS_TOL && rel > REL_TOL) {
-      const y = df(x);
-      if (Number.isFinite(y)) {
-        const [sx, sy] = worldToScreen(x, y, W, panelH, xMin, xMax, dRange[0], dRange[1]);
+
+  // eşi̇kler: hem mutlak hem göreli kıyas
+  const ABS_TOL = 0.3;
+  const REL_TOL = 0.3;
+
+  for (let i = 0; i < xs.length - 1; i++) {
+    // iki noktanın tam ortası: köşe araya düşse bile yakalanır
+    const xm = 0.5 * (xs[i] + xs[i + 1]);
+    const h  = 0.5 * (xs[i + 1] - xs[i]);
+
+    // soldan/sağdan sayısal türev
+    const left  = (f(xm) - f(xm - h)) / h;
+    const right = (f(xm + h) - f(xm)) / h;
+
+    if (!Number.isFinite(left) || !Number.isFinite(right)) continue;
+
+    const absDiff = Math.abs(left - right);
+    const rel     = absDiff / Math.max(1e-9, Math.max(Math.abs(left), Math.abs(right)));
+
+    // kesiklik testi (f'yi değil f'yi kontrol): zıplama varsa ayrıca işaretle
+    const jump = Math.abs(f(xm + h) - f(xm - h));
+
+    // türev tanımsız: köşe veya çok keskin kırılma
+    if ((absDiff > ABS_TOL && rel > REL_TOL) || jump > 0.05 * (dRange[1] - dRange[0])) {
+      // gösterimde y değeri: sağ ve sol türevin ortalaması (grafikte yer bulsun)
+      const yMark = 0.5 * (left + right);
+      if (Number.isFinite(yMark)) {
+        const [sx, sy] = worldToScreen(xm, yMark, W, panelH, xMin, xMax, dRange[0], dRange[1]);
         ctx.fillStyle = "red";
         ctx.beginPath();
         ctx.arc(sx, sy, 3, 0, Math.PI * 2);
@@ -305,8 +317,10 @@ if (absDiff > ABS_TOL && rel > REL_TOL) {
       }
     }
   }
+
   ctx.restore();
 }
+
 
   }, [expr, f, df, xMin, xMax, yRange, dRange, hoverX, samples, showDerivative, showTangent, lockTangent, tangentX]);
 
