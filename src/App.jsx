@@ -581,8 +581,8 @@ if (f && showDerivative) {
 </div>
 
           <div style={{ fontSize:12, opacity:0.8, marginTop:8 }}>
-            İpuçları: sin, cos, tan, exp, log (doğal log), abs, ^ üstel. Örnek: <code>abs(x)</code>, <code>sin(x)+x^2/5</code>, <code>x&lt;0?-x:x^2</code>.
-            <br/>Not: Sembolik türev mümkün değilse sayısal merkez farkı kullanılır; köşe/kesiklikte teğet gizlenir.
+            İpuçları: abs mutlak, ^ üstel. Örnek: <code>abs(x)</code>, <code>sin(x)+x^2/5</code>, <code>x&lt;0?-x:x^2</code>.
+          
           </div>
           
 
