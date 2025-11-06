@@ -216,16 +216,56 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
       ctx.restore();
     }
     function drawCurve(fun, color, xMin_, xMax_, yMin_, yMax_, yOffset) {
-      ctx.save(); ctx.translate(0, yOffset);
-      ctx.beginPath(); let started = false; const N = samples;
-      for (let i = 0; i < N; i++) {
-        const x = xMin_ + (i / (N - 1)) * (xMax_ - xMin_);
-        const y = fun(x); if (!Number.isFinite(y)) { started = false; continue; }
-        const [sx, sy] = worldToScreen(x, y, W, panelH, xMin_, xMax_, yMin_, yMax_);
-        if (!started) { ctx.moveTo(sx, sy); started = true; } else { ctx.lineTo(sx, sy); }
-      }
-      ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.translate(0, yOffset);
+  ctx.lineWidth = 2; ctx.strokeStyle = color;
+
+  const N = samples;
+  const xs = linspace(xMin_, xMax_, N);
+
+  const JUMP_ABS = 0.75;  // atlama algısı (mutlak)
+  const JUMP_REL = 0.4;   // atlama algısı (göreli)
+
+  ctx.beginPath();
+  let started = false;
+  let lastY = null;
+
+  for (let i = 0; i < xs.length; i++) {
+    const x = xs[i];
+    const y = fun(x);
+
+    if (!Number.isFinite(y)) {
+      // tanımsızsa path’i kopar
+      started = false;
+      continue;
     }
+
+    const [sx, sy] = worldToScreen(x, y, W, panelH, xMin_, xMax_, yMin_, yMax_);
+
+    // önceki noktaya göre atlama var mı?
+    if (started && Number.isFinite(lastY)) {
+      const absJump = Math.abs(y - lastY);
+      const relJump = absJump / Math.max(1e-9, Math.max(Math.abs(y), Math.abs(lastY)));
+      if (absJump > JUMP_ABS && relJump > JUMP_REL) {
+        // path’i KES – yeni segment başlat
+        ctx.stroke();
+        ctx.beginPath();
+        started = false;
+      }
+    }
+
+    if (!started) {
+      ctx.moveTo(sx, sy);
+      started = true;
+    } else {
+      ctx.lineTo(sx, sy);
+    }
+    lastY = y;
+  }
+
+  ctx.stroke();
+  ctx.restore();
+}
+
     function evalScalar(exprStr) {
   try {
     if (typeof exprStr !== "string") return Number(exprStr);
@@ -267,6 +307,80 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
   const label = `x=${x.toFixed(3)}  f(x)=${y.toFixed(3)}  f'(x)=${m.toFixed(3)}`;
   ctx.fillText(label, Math.min(Math.max(6, sx0 + 6), W - 180), Math.max(14, sy - 6));
 }
+function drawDerivativeWithHoles() {
+  if (!df || !showDerivative) return;
+
+  const xs = linspace(xMin, xMax, Math.min(samples, 500));
+  const H = (xMax - xMin) / (xs.length - 1);
+
+  const CONT_ABS = 0.6;
+  const CONT_REL = 0.35;
+  const SLOPE_ABS = 0.6;
+  const SLOPE_REL = 0.35;
+
+  ctx.save();
+  ctx.translate(0, panelH + 12);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#10b981";
+
+  ctx.beginPath();
+  let started = false;
+
+  for (let i = 1; i < xs.length - 1; i++) {
+    const x = xs[i];
+    const h = Math.max(1e-6, 0.5 * H);
+
+    const ym = f(x - h);
+    const yp = f(x + h);
+
+    const contAbs = Math.abs(yp - ym);
+    const contRel = contAbs / Math.max(1e-9, Math.max(Math.abs(yp), Math.abs(ym)));
+    const jumpHere = !(Number.isFinite(ym) && Number.isFinite(yp)) ||
+                     (contAbs > CONT_ABS && contRel > CONT_REL);
+
+    const y = df(x);
+    const [sx, sy] = Number.isFinite(y)
+      ? worldToScreen(x, y, W, panelH, xMin, xMax, dRange[0], dRange[1])
+      : [null, null];
+
+    if (!Number.isFinite(y) || jumpHere) {
+      started = false;
+    } else {
+      const left  = (f(x) - f(x - h)) / h;
+      const right = (f(x + h) - f(x)) / h;
+      const slopeAbs = Math.abs(left - right);
+      const slopeRel = slopeAbs / Math.max(1e-9, Math.max(Math.abs(left), Math.abs(right)));
+      const cornerHere = (slopeAbs > SLOPE_ABS && slopeRel > SLOPE_REL);
+
+      if (!started) {
+        ctx.moveTo(sx, sy);
+        started = true;
+      } else {
+        ctx.lineTo(sx, sy);
+      }
+
+      if (cornerHere) {
+        const drawHole = (yy) => {
+          if (!Number.isFinite(yy)) return;
+          const [hx, hy] = worldToScreen(x, yy, W, panelH, xMin, xMax, dRange[0], dRange[1]);
+          ctx.fillStyle = "#fff";
+          ctx.beginPath(); ctx.arc(hx, hy, 3, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#ef4444";
+          ctx.beginPath(); ctx.arc(hx, hy, 3, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = "#10b981";
+        };
+        drawHole(left);
+        drawHole(right);
+        ctx.stroke();
+        ctx.beginPath();
+        started = false;
+      }
+    }
+  }
+
+  ctx.stroke();
+  ctx.restore();
+}
 
 
     // Üst panel
@@ -274,8 +388,10 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
     drawCurve(f, "#2563eb", xMin, xMax, yRange[0], yRange[1], 0);
     drawTangentAt();
     // Alt panel
-    drawAxes(xMin, xMax, dRange[0], dRange[1], panelH + 12);
-    if (df && showDerivative) drawCurve(df, "#10b981", xMin, xMax, dRange[0], dRange[1], panelH + 12);
+  drawAxes(xMin, xMax, dRange[0], dRange[1], panelH + 12);
+drawDerivativeWithHoles();
+
+
     // Tanımsız noktaları işaretle
 // Tanımsız noktaları işaretle (köşe / kesiklik)
 if (f && showDerivative) {
