@@ -226,31 +226,48 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
       }
       ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke(); ctx.restore();
     }
+    function evalScalar(exprStr) {
+  try {
+    if (typeof exprStr !== "string") return Number(exprStr);
+    const node = math.parse(exprStr.replaceAll("π","pi"));
+    const v = node.evaluate();
+    return Number(v);
+  } catch { return NaN; }
+}
+
     function drawTangentAt() {
-      if (!showTangent || hoverX == null || !df) return;
-      const x = clamp(hoverX, xMin, xMax); const y = f(x); const m = df(x);
-      if (!Number.isFinite(y) || !Number.isFinite(m)) return;
-      const xA = xMin, xB = xMax;
-      const yA = m * (xA - x) + y, yB = m * (xB - x) + y;
+  if (!showTangent || !df) return;
 
-      const [sx] = worldToScreen(x, 0, W, panelH, xMin, xMax, yRange[0], yRange[1]);
-      const [, sy0] = worldToScreen(0, 0, W, panelH, xMin, xMax, yRange[0], yRange[1]);
-      ctx.strokeStyle = "#c7d2fe"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
-      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, panelH); ctx.stroke(); ctx.setLineDash([]);
+  // İKİ MOD: kilitliyse x0, değilse hover
+  const xCandidate = lockTangent ? evalScalar(tangentX) : hoverX;
+  if (xCandidate == null || Number.isNaN(xCandidate)) return;
 
-      const [sAx, sAy] = worldToScreen(xA, yA, W, panelH, xMin, xMax, yRange[0], yRange[1]);
-      const [sBx, sBy] = worldToScreen(xB, yB, W, panelH, xMin, xMax, yRange[0], yRange[1]);
-      ctx.strokeStyle = "#7c3aed"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(sAx, sAy); ctx.lineTo(sBx, sBy); ctx.stroke();
+  const x = clamp(xCandidate, xMin, xMax);
+  const y = f(x);
+  const m = df(x);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return;
 
-      const [sx0, sy] = worldToScreen(x, y, W, panelH, xMin, xMax, yRange[0], yRange[1]);
-      ctx.fillStyle = "#7c3aed"; ctx.beginPath(); ctx.arc(sx0, sy, 3, 0, Math.PI * 2); ctx.fill();
+  const xA = xMin, xB = xMax;
+  const yA = m * (xA - x) + y, yB = m * (xB - x) + y;
 
-      ctx.fillStyle = "#1f2937"; ctx.font = "12px system-ui";
-      ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-      const label = `x=${x.toFixed(3)}  f(x)=${y.toFixed(3)}  f'(x)=${m.toFixed(3)}`;
-      ctx.fillText(label, Math.min(Math.max(6, sx0 + 6), W - 180), Math.max(14, sy - 6));
-    }
+  const [sx] = worldToScreen(x, 0, W, panelH, xMin, xMax, yRange[0], yRange[1]);
+  ctx.strokeStyle = "#c7d2fe"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, panelH); ctx.stroke(); ctx.setLineDash([]);
+
+  const [sAx, sAy] = worldToScreen(xA, yA, W, panelH, xMin, xMax, yRange[0], yRange[1]);
+  const [sBx, sBy] = worldToScreen(xB, yB, W, panelH, xMin, xMax, yRange[0], yRange[1]);
+  ctx.strokeStyle = "#7c3aed"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(sAx, sAy); ctx.lineTo(sBx, sBy); ctx.stroke();
+
+  const [sx0, sy] = worldToScreen(x, y, W, panelH, xMin, xMax, yRange[0], yRange[1]);
+  ctx.fillStyle = "#7c3aed"; ctx.beginPath(); ctx.arc(sx0, sy, 3, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = "#1f2937"; ctx.font = "12px system-ui";
+  ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+  const label = `x=${x.toFixed(3)}  f(x)=${y.toFixed(3)}  f'(x)=${m.toFixed(3)}`;
+  ctx.fillText(label, Math.min(Math.max(6, sx0 + 6), W - 180), Math.max(14, sy - 6));
+}
+
 
     // Üst panel
     drawAxes(xMin, xMax, yRange[0], yRange[1], 0);
@@ -259,7 +276,8 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
     // Alt panel
     drawAxes(xMin, xMax, dRange[0], dRange[1], panelH + 12);
     if (df && showDerivative) drawCurve(df, "#10b981", xMin, xMax, dRange[0], dRange[1], panelH + 12);
-  }, [expr, f, df, xMin, xMax, yRange, dRange, hoverX, samples, showDerivative, showTangent]);
+  }, [expr, f, df, xMin, xMax, yRange, dRange, hoverX, samples, showDerivative, showTangent, lockTangent, tangentX]);
+
 
   useEffect(() => {
     const el = canvasRef.current; if (!el) return;
@@ -278,15 +296,6 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
     return () => { el.removeEventListener("mousemove", onMove); el.removeEventListener("mouseleave", onLeave); };
   }, [xMin, xMax, yRange]);
 
-  const presets = [
-    { name: "sin(x) + x^2/5", expr: "sin(x) + x^2/5" },
-    { name: "e^(-x^2)", expr: "exp(-x^2)" },
-    { name: "x^3 - 3x", expr: "x^3 - 3*x" },
-    { name: "ln(x)", expr: "log(x)" },
-    { name: "|x|", expr: "abs(x)" },
-    { name: "parça tanım", expr: "x<0?-x:x^2" },
-  ];
-
   const box = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 };
 
   return (
@@ -297,15 +306,7 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
             <h1 style={{ fontSize: 28, margin: 0, fontWeight: 800 }}>Türevli Fonksiyon Görselleştirici</h1>
             <p style={{ margin: "6px 0", opacity: 0.8 }}>Üst panel: f(x) • Alt panel: f'(x) • Üst panelde imleç teğeti</p>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {presets.map(p => (
-              <button key={p.name} onClick={() => setExpr(p.expr)}
-                style={{ padding:"8px 12px", borderRadius:12, border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer" }}>
-                {p.name}
-              </button>
-            ))}
-          </div>
-        </header>
+          </header>
 
         <section style={box}>
           <label style={{ fontSize: 14, fontWeight: 600 }}>f(x)</label>
@@ -325,6 +326,33 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
               <input type="checkbox" checked={showTangent} onChange={(e)=>setShowTangent(e.target.checked)} /> teğet
             </label>
           </div>
+          <label style={{ fontSize:14 }}>
+  <input type="checkbox" checked={showTangent} onChange={(e)=>setShowTangent(e.target.checked)} /> teğet
+</label>
+{showTangent && (
+  <div style={{display:"flex", alignItems:"center", gap:8, marginTop:6}}>
+    <label style={{fontSize:14}}>
+      <input
+        type="checkbox"
+        checked={lockTangent}
+        onChange={(e)=>setLockTangent(e.target.checked)}
+      /> teğeti sabitle
+    </label>
+    {lockTangent && (
+      <>
+        <span style={{fontSize:14}}>x₀ = </span>
+        <input
+  type="text"
+  value={tangentX}
+  onChange={(e)=>setTangentX(e.target.value)}
+  style={{width:70, padding:"4px 6px", borderRadius:8, border:"1px solid #cbd5e1"}}
+/>
+
+      </>
+    )}
+  </div>
+)}
+
 <div style={{display:"flex", gap:8, flexWrap:"wrap", marginTop:8}}>
   <button onClick={()=>insertSnippet("x")}      className="btn">x</button>
   <button onClick={()=>insertSnippet("^")}      className="btn">^</button>
