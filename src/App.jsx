@@ -276,6 +276,38 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
     // Alt panel
     drawAxes(xMin, xMax, dRange[0], dRange[1], panelH + 12);
     if (df && showDerivative) drawCurve(df, "#10b981", xMin, xMax, dRange[0], dRange[1], panelH + 12);
+    // Tanımsız noktaları işaretle
+if (f && df && showDerivative) {
+  const xs = linspace(xMin, xMax, Math.min(samples, 400));
+  ctx.save();
+  ctx.translate(0, panelH + 12);
+  for (let i = 1; i < xs.length - 1; i++) {
+    const x = xs[i];
+    const h = 1e-4 * Math.max(1, Math.abs(x));
+    const left = (f(x) - f(x - h)) / h;
+    const right = (f(x + h) - f(x)) / h;
+    const diff = Math.abs(left - right);
+    
+    // Eğer fark çok büyükse türev tanımsız demektir
+const L = Math.abs(left), R = Math.abs(right);
+const absDiff = Math.abs(left - right);
+const rel = absDiff / Math.max(1e-9, Math.max(L, R));
+const ABS_TOL = 0.3;
+const REL_TOL = 0.3;
+if (absDiff > ABS_TOL && rel > REL_TOL) {
+      const y = df(x);
+      if (Number.isFinite(y)) {
+        const [sx, sy] = worldToScreen(x, y, W, panelH, xMin, xMax, dRange[0], dRange[1]);
+        ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}
+
   }, [expr, f, df, xMin, xMax, yRange, dRange, hoverX, samples, showDerivative, showTangent, lockTangent, tangentX]);
 
 
@@ -322,9 +354,7 @@ function insertCall(name) { insertSnippet(`${name}(`, `)`); }
             <label style={{ fontSize:14 }}>
               <input type="checkbox" checked={showDerivative} onChange={(e)=>setShowDerivative(e.target.checked)} /> türev grafiği
             </label>
-            <label style={{ fontSize:14 }}>
-              <input type="checkbox" checked={showTangent} onChange={(e)=>setShowTangent(e.target.checked)} /> teğet
-            </label>
+          
           </div>
           <label style={{ fontSize:14 }}>
   <input type="checkbox" checked={showTangent} onChange={(e)=>setShowTangent(e.target.checked)} /> teğet
